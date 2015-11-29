@@ -10,10 +10,10 @@ from PilLite import Image
 import re
 import readline
 import wget
-import sys
 import SimpleHTTPServer
 import SocketServer
 import netifaces
+import tempfile
 
 
 class CommandLine:
@@ -53,6 +53,82 @@ class CommandLine:
         self.file_dir = args.file_dir
 
 
+class Tag():
+    def __init__(self, path):
+        self.path = path
+        if file_extension(self.path) is 'MP3':
+            tag = MP3(self.path, ID3=EasyID3)
+            self.album_artist = tag['performer'][0]
+            self.track_number = tag['tracknumber'][0]
+            self.year = tag['date'][0]
+        if file_extension(self.path) is 'FLAC':
+            tag = FLAC(self.path)
+            self.album_artist = tag['albumartist'][0]
+            try:
+                self.track_number = tag['track'][0]
+            except KeyError:
+                self.track_number = tag['tracknumber'][0]
+            self.year = tag['year'][0]
+        self.pprint = tag.pprint().split('\n')[0]
+        self.artist = tag['artist'][0]
+        self.title = tag['title'][0]
+        self.album = tag['album'][0]
+        self.genre = tag['genre'][0]
+        if 'discnumber' in tag:
+            self.disc_number = tag['discnumber']
+        self.file_name = tag.filename
+
+    def save(self):
+        if file_extension(self.path) is 'MP3':
+            tag = MP3(self.path, ID3=EasyID3)
+            tag['performer'] = self.album_artist
+            tag['tracknumber'] = self.track_number
+            tag['date'] = self.year
+        if file_extension(self.path) is 'FLAC':
+            tag = FLAC(self.path)
+            tag['albumartist'] = self.album_artist
+            try:
+                tag['track'] = self.track_number
+            except KeyError:
+                tag['tracknumber'] = self.track_number
+            tag['year'] = self.year
+        tag['artist'] = self.artist
+        tag['title'] = self.title
+        tag['album'] = self.album
+        tag['genre'] = self.genre
+        # if 'discnumber' in tag:
+        #     del tag['discnumber']
+        tag.save()
+
+    def set_art(self, art_file):
+        if file_extension(self.path) is 'MP3':
+            art_tag = MP3(self.path, ID3=ID3)
+            with open(art_file, 'rb') as f:
+                image = f.read()
+            art_tag.tags.delall('APIC')
+            art_tag.tags.add(APIC(
+                encoding=3,  # 3 is for utf-8
+                mime='image/jpg',  # image/jpeg or image/png
+                type=3,  # 3 is for the cover image
+                desc=u'Cover',
+                data=image
+                ))
+            art_tag.save()
+            print 'Wrote embedded MP3 art.'
+        if file_extension(self.path) is 'FLAC':
+            art_tag = FLAC(self.path)
+            image = Picture()
+            image.type = 3
+            image.mime = 'image/jpg'
+            image.desc = 'front cover'
+            with open(art_file, 'rb') as f:
+                image.data = f.read()
+            art_tag.clear_pictures()
+            art_tag.add_picture(image)
+            art_tag.save()
+            print 'Wrote embedded FLAC art'
+
+
 def yes_no():
     answer = raw_input('Please indicate approval: [y/n]')
     if answer and answer[0].lower() != 'y':
@@ -69,212 +145,19 @@ def prefill_input(prompt, prefill=''):
         readline.set_startup_hook()
 
 
-def rename_tracks(folder):
-    for track in os.listdir(folder):
-        if track.endswith(".mp3"):
-            audio = MP3(os.path.join(folder, track), ID3=EasyID3)
-            name = audio['tracknumber'][0] + ' - ' + audio['title'][0] + '.mp3'
-            filename = name.replace('/', '-')
-            os.rename(os.path.join(folder, track),
-                      os.path.join(folder, filename))
-        if track.endswith(".flac"):
-            audio = FLAC(os.path.join(folder, track))
-            name = audio['tracknumber'][0] + ' - ' + audio['title'][0]\
-                + '.flac'
-            filename = name.replace('/', '-')
-            os.rename(os.path.join(folder, track),
-                      os.path.join(folder, filename))
-
-
-def rename_album(folder):
-    # would be great to ascii-fy this
-    first_file = get_one_file(folder)
-    if first_file.endswith(".mp3"):
-        audio = MP3(os.path.join(folder, first_file), ID3=EasyID3)
-    if first_file.endswith(".flac"):
-        audio = FLAC(os.path.join(folder, first_file))
-    album = audio['album'][0]
-    year = audio['date'][0]
-    # need to not zap the year if it should be in the prefill
-    with_year = prefill_input('Album name: ', year + ' - ' + album)
-    year_regex = re.compile('\d\d\d\d\s-\s')
-    match = year_regex.match(with_year[:7])
-    without_year = with_year.lstrip(match.group())
-    for track in os.listdir(folder):
-        if track.endswith(".mp3"):
-            audio = MP3(os.path.join(folder, track), ID3=EasyID3)
-            audio['album'] = without_year
-            audio.save(os.path.join(folder, track))
-        if track.endswith(".flac"):
-            audio = FLAC(os.path.join(folder, track))
-            audio['album'] = without_year
-            audio.save(os.path.join(folder, track))
-    dirname = with_year.replace('/', '-')
-    os.rename(folder, dirname)
-    return dirname
-
-
-def live_tracks(folder):
-    for track in os.listdir(folder):
-        if track.endswith(".mp3"):
-            audio = MP3(os.path.join(folder, track), ID3=EasyID3)
-            if '(live)' in audio['title'][0]:
-                print track + ' is already tagged (live)'
-            else:
-                audio['title'] = audio['title'][0] + ' (live)'
-                audio.save(os.path.join(folder, track))
-        if track.endswith(".flac"):
-            audio = FLAC(os.path.join(folder, track))
-            if '(live)' in audio['title'][0]:
-                print track + ' is already tagged (live)'
-            else:
-                audio['title'] = audio['title'][0] + ' (live)'
-                audio.save(os.path.join(folder, track))
-    rename_tracks(folder)
-
-
-def get_one_file(folder):
-    for x in os.listdir(folder):
-        if x.endswith('.mp3') or x.endswith('.flac'):
-            myfile = x
-            return myfile
-
-
-def normalize(folder, mass_genre=None):
-    # check for track numbers, could be missing
-    first_file = get_one_file(folder)
-    if first_file.endswith(".mp3"):
-        audio = MP3(os.path.join(folder, first_file), ID3=EasyID3)
-    if first_file.endswith(".flac"):
-        audio = FLAC(os.path.join(folder, first_file))
-    if mass_genre is None:
-        try:
-            existing_genre = audio['genre'][0]
-            genre = prefill_input('Genre for ' + folder.rstrip('/') + ': ',
-                                  existing_genre)
-        except:
-            genre = raw_input('Genre for ' + folder.rstrip('/') + ': ')
-    else:
-        genre = mass_genre
-    try:
-        year = audio['date'][0]
-        year = prefill_input('Year for ' + folder.rstrip('/') + ': ', year[:4])
-    except KeyError:
-        year = raw_input('Year for ' + folder.rstrip('/') + ': ')
-    for track in os.listdir(folder):
-        if track.endswith(".mp3"):
-            audio = MP3(os.path.join(folder, track), ID3=EasyID3)
-            audio['genre'] = genre
-            if 'discnumber' in audio:
-                del audio['discnumber']
-            audio['tracknumber'] = audio['tracknumber'][0].split('/')[0]
-            if len(audio['tracknumber'][0]) is 1:
-                audio['tracknumber'] = '0' + audio['tracknumber'][0]
-            if audio['artist'][0] != 'Various Artists':
-                audio['performer'] = audio['artist'][0]
-            audio['date'] = year
-            audio.save(os.path.join(folder, track))
-        if track.endswith(".flac"):
-            audio = FLAC(os.path.join(folder, track))
-            audio['genre'] = genre
-            if 'discnumber' in audio:
-                del audio['discnumber']
-            audio['tracknumber'] = audio['tracknumber'][0].split('/')[0]
-            if len(audio['tracknumber'][0]) is 1:
-                audio['tracknumber'] = '0' + audio['tracknumber'][0]
-            if audio['artist'][0] != 'Various Artists':
-                audio['albumartist'] = audio['artist'][0]
-            audio['year'] = year
-            audio.save(os.path.join(folder, track))
-
-
-def add_art(folder):
-    # need to check for valid art here (while looop?)
-    # add command for global do not overwrite
-    art_file = os.path.join(folder, 'folder.jpg')
-    good_art = False
-    if os.path.isfile(art_file):
-        try:
-            img = Image.open(art_file)
-            good_art = True
-        except IOError:
-            good_art = False
-            os.remove(art_file)
-    if good_art is True:
-        print art_file + ' found - ' + str(img.size) + 'px.  Overwrite?'
-        if yes_no() is False:
-            print 'using existing art'
-        else:
-            os.remove(art_file)
-            url = raw_input('Art url for ' + folder.rstrip('/') + ': ')
-            wget.download(url, out=art_file, bar=None)
-    else:
-        url = raw_input('Art url for ' + folder.rstrip('/') + ': ')
-        wget.download(url, out=art_file, bar=None)
-    for track in os.listdir(folder):
-        if track.endswith(".mp3"):
-            audio = MP3(os.path.join(folder, track), ID3=ID3)
-            with open(art_file, 'rb') as f:
-                image = f.read()
-            audio.tags.delall('APIC')
-            audio.tags.add(APIC(
-                encoding=3,  # 3 is for utf-8
-                mime='image/jpg',  # image/jpeg or image/png
-                type=3,  # 3 is for the cover image
-                desc=u'Cover',
-                data=image
-                ))
-            audio.save(os.path.join(folder, track))
-        if track.endswith(".flac"):
-            audio = FLAC(os.path.join(folder, track))
-            image = Picture()
-            image.type = 3
-            image.mime = 'image/jpg'
-            image.desc = 'front cover'
-            with open(art_file, 'rb') as f:
-                image.data = f.read()
-            audio.clear_pictures()
-            audio.add_picture(image)
-            audio.save(os.path.join(folder, track))
-
-
-def list_info(folder):
+def list_info(tag, folder):
     # if data is missing we crash here
     # for FLACs we don't print the zero padding that is actually in the track
     # number
-    for track in os.listdir(folder):
-        if track.endswith(".mp3"):
-            audio = MP3(os.path.join(folder, track), ID3=EasyID3)
-            print track
-            print audio.pprint().split('\n')[0]
-            print 'Artist: ' + audio['artist'][0]
-            print 'Title: ' + audio['title'][0]
-            print 'Album: ' + audio['album'][0]
-            print 'Track#: ' + audio['tracknumber'][0]
-            print 'Year: ' + audio['date'][0]
-            try:
-                print 'Genre: ' + audio['genre'][0]
-            except:
-                pass
-            print 'Album Artist: ' + audio['performer'][0] + '\n'
-        if track.endswith(".flac"):
-            audio = FLAC(os.path.join(folder, track))
-            print track
-            print audio.pprint().split('\n')[0]
-            print 'Artist: ' + audio['artist'][0]
-            print 'Title: ' + audio['title'][0]
-            print 'Album: ' + audio['album'][0]
-            try:
-                print 'Track#: ' + audio['track'][0]
-            except KeyError:
-                print 'Track#: ' + audio['tracknumber'][0]
-            print 'Year: ' + audio['year'][0]
-            try:
-                print 'Genre: ' + audio['genre'][0]
-            except:
-                pass
-            print 'Album Artist: ' + audio['albumartist'][0] + '\n'
-            # print 'Image: ' + str(audio.pictures) + '\n'
+    print tag.file_name
+    print tag.pprint
+    print 'Artist: ' + tag.artist
+    print 'Album Artist: ' + tag.album_artist
+    print 'Track#: ' + tag.track_number
+    print 'Title: ' + tag.title
+    print 'Album: ' + tag.album
+    print 'Year: ' + tag.year
+    print 'Genre: ' + tag.genre
     art_file = os.path.join(folder, 'folder.jpg')
     if os.path.isfile(art_file):
         try:
@@ -301,6 +184,159 @@ def list_info(folder):
             os.chdir(pwd)
 
 
+def add_folder_art(path):
+    # need to check for valid art here (while looop?)
+    # add command for global do not overwrite
+    # check for JPGs
+    art_file = os.path.join(path, 'folder.jpg')
+    good_art = False
+    if os.path.isfile(art_file):
+        try:
+            img = Image.open(art_file)
+            good_art = True
+        except IOError:
+            good_art = False
+            os.remove(art_file)
+    if good_art is True:
+        print art_file + ' found - ' + str(img.size) + 'px.  Overwrite?'
+        if yes_no() is False:
+            print 'using existing art'
+        else:
+            os.remove(art_file)
+            url = raw_input('Art url for ' + path.rstrip('/') + ': ')
+            wget.download(url, out=art_file, bar=None)
+    elif os.path.isdir(path):
+        url = raw_input('Art url for ' + path.rstrip('/') + ': ')
+        wget.download(url, out=art_file, bar=None)
+
+
+def add_file_art(tag, key):
+    # check for JPGs
+    art_file = os.path.join(key, 'folder.jpg')
+    if os.path.isdir(key):
+        tag.set_art(art_file)
+    else:
+        tf = tempfile.NamedTemporaryFile()
+        temp_file = tf.name + '.jpg'
+        url = raw_input('Art url for ' + tag.file_name.rstrip('/') + ': ')
+        wget.download(url, out=temp_file, bar=None)
+        tag.set_art(temp_file)
+        tf.close()
+
+
+def normalize(tag, year, genre, mass_genre=None):
+    tag.genre = genre
+    # does this work?
+    if hasattr(tag, 'disc_number'):
+        del tag.disc_number
+    tag.track_number = tag.track_number.split('/')[0]
+    if len(tag.track_number) is 1:
+        tag.track_number = '0' + tag.track_number
+    if tag.artist != 'Various Artists':
+        tag.album_artist = tag.artist
+    tag.year = year
+    tag.save()
+    print 'Wrote metadata for ' + tag.file_name
+
+
+def file_extension(file_name, audio_check=False):
+    name, extension = os.path.splitext(file_name)
+    ext = extension.lower()
+    audio = False
+    audio_type = None
+    if ext.endswith(".mp3"):
+        audio_type = 'MP3'
+        audio = True
+    if ext.endswith(".flac"):
+        audio_type = 'FLAC'
+        audio = True
+    if audio_check is True:
+        return audio
+    else:
+        return audio_type
+
+
+def parse_paths(paths):
+    files = dict()
+    for path in paths:
+        file_list = list()
+        if os.path.isdir(path):
+            for file_name in os.listdir(path):
+                if file_extension(file_name, audio_check=True):
+                    file_list.append(os.path.join(path, file_name))
+                    files[path] = file_list
+        if os.path.isfile(path):
+            if file_extension(path, audio_check=True):
+                file_list.append(path)
+                files[path] = file_list
+    return files
+
+
+def normalize_input(tag, folder=None, mass_genre=None):
+    # check for track numbers, could be missing
+    if mass_genre is None:
+        try:
+            existing_genre = tag.genre
+            genre = prefill_input('Genre for ' + folder.rstrip('/') + ': ',
+                                  existing_genre)
+        except:
+            genre = raw_input('Genre for ' + folder.rstrip('/') + ': ')
+    else:
+        genre = mass_genre
+    try:
+        year = tag.year
+        year = prefill_input('Year for ' + folder.rstrip('/') + ': ',
+                             tag.year[:4])
+    except KeyError:
+        year = raw_input('Year for ' + folder.rstrip('/') + ': ')
+    return genre, year
+
+
+def rename_album_prompt(first_tag, key):
+    # would be great to ascii-fy this
+    album = first_tag.album
+    # print album
+    year = first_tag.year
+    # need to not zap the year if it should be in the prefill
+    with_year = prefill_input('Album name: ', year + ' - ' + album)
+    year_regex = re.compile('\d\d\d\d\s-\s')
+    match = year_regex.match(with_year[:7])
+    try:
+        without_year = with_year.lstrip(match.group())
+    except AttributeError:
+        without_year = with_year
+    return without_year, with_year
+
+
+def rename_album_dir(with_year, key):
+    dir_name = with_year.replace('/', '-')
+    print 'Renaming album directory to ' + dir_name
+    os.rename(key, dir_name)
+
+
+def rename_album_tags(tag, new_name):
+    tag.album = new_name
+    print 'Renaming album tags to ' + new_name
+    tag.save()
+
+
+def rename_tracks(tag, key):
+    name, extension = os.path.splitext(tag.file_name)
+    safety = tag.title.replace('/', '-')
+    final_name = tag.track_number + ' - ' + safety + extension
+    dest = os.path.join(os.path.dirname(key), final_name)
+    os.rename(tag.file_name, dest)
+
+
+def live_tracks(tag, key):
+    if '(live)' in tag.title:
+        print tag.file_name + ' is already tagged (live)'
+    else:
+        tag.title = tag.title + ' (live)'
+        tag.save()
+        rename_tracks(tag, key)
+
+
 def _main():
     # rename album should rename only, nothing else
     # add check for album art only, nothing else
@@ -309,24 +345,34 @@ def _main():
     cmdline.cmdline()
     if cmdline.mass_genre:
         genre = raw_input('Genre for all folders: ')
-    for folder in cmdline.file_dir:
-        if cmdline.list_info:
-            list_info(folder)
-            sys.exit()
+    for key, value in parse_paths(cmdline.file_dir).iteritems():
+        first_tag = Tag(value[0])
         if cmdline.mass_genre:
-            normalize(folder, genre)
+            year = normalize_input(first_tag)
+        elif cmdline.list_info:
+            pass
         else:
-            normalize(folder)
-        add_art(folder)
-        if cmdline.live_tracks:
-            live_tracks(folder)
-        if cmdline.normalize_filenames:
-            rename_tracks(folder)
+            genre, year = normalize_input(first_tag, key)
+            add_folder_art(key)
         if cmdline.rename_album:
-            new_name = rename_album(folder)
-            list_info(new_name)
-        else:
-            list_info(folder)
+            new_name, with_year = rename_album_prompt(first_tag, key)
+        for music in value:
+            tag = Tag(music)
+            if cmdline.list_info:
+                list_info(tag, key)
+            else:
+                normalize(tag, year, genre)
+                add_file_art(tag, key)
+            if cmdline.live_tracks:
+                live_tracks(tag, key)
+                list_info(tag, key)
+            if cmdline.normalize_filenames:
+                rename_tracks(tag, key)
+            if cmdline.rename_album:
+                rename_album_tags(tag, new_name)
+                list_info(tag, key)
+        if cmdline.rename_album:
+            rename_album_dir(with_year, key)
 
 if __name__ == '__main__':
     _main()
