@@ -1,19 +1,18 @@
 #!/usr/bin/env python
 import argparse
-from mutagen.easyid3 import EasyID3
-from mutagen.flac import Picture, FLAC
-from mutagen.mp3 import MP3
-from mutagen.id3 import ID3, APIC
+import fnmatch
+import mutagen
+import netifaces
 import os
-# pip install Pil-Lite
-from PilLite import Image
 import re
 import readline
-import wget
 import SimpleHTTPServer
 import SocketServer
-import netifaces
 import tempfile
+import wget
+from mutagen.flac import Picture
+from mutagen.id3 import APIC
+from PilLite import Image
 
 
 class CommandLine:
@@ -56,13 +55,12 @@ class CommandLine:
 class Tag():
     def __init__(self, path):
         self.path = path
-        if file_extension(self.path) is 'MP3':
-            tag = MP3(self.path, ID3=EasyID3)
+        tag = mutagen.File(self.path, None, True)
+        if type(tag) is mutagen.mp3.EasyMP3:
             self.album_artist = tag['performer'][0]
             self.track_number = tag['tracknumber'][0]
             self.year = tag['date'][0]
-        if file_extension(self.path) is 'FLAC':
-            tag = FLAC(self.path)
+        if type(tag) is mutagen.flac.FLAC:
             self.album_artist = tag['albumartist'][0]
             try:
                 self.track_number = tag['track'][0]
@@ -79,13 +77,12 @@ class Tag():
         self.file_name = tag.filename
 
     def save(self):
-        if file_extension(self.path) is 'MP3':
-            tag = MP3(self.path, ID3=EasyID3)
+        tag = mutagen.File(self.path, None, True)
+        if type(tag) is mutagen.mp3.EasyMP3:
             tag['performer'] = self.album_artist
             tag['tracknumber'] = self.track_number
             tag['date'] = self.year
-        if file_extension(self.path) is 'FLAC':
-            tag = FLAC(self.path)
+        if type(tag) is mutagen.flac.FLAC:
             tag['albumartist'] = self.album_artist
             try:
                 tag['track'] = self.track_number
@@ -96,13 +93,14 @@ class Tag():
         tag['title'] = self.title
         tag['album'] = self.album
         tag['genre'] = self.genre
+        # does this work?
         # if 'discnumber' in tag:
         #     del tag['discnumber']
         tag.save()
 
     def set_art(self, art_file):
-        if file_extension(self.path) is 'MP3':
-            art_tag = MP3(self.path, ID3=ID3)
+        art_tag = mutagen.File(self.path, None, False)
+        if type(art_tag) is mutagen.mp3.MP3:
             with open(art_file, 'rb') as f:
                 image = f.read()
             art_tag.tags.delall('APIC')
@@ -115,8 +113,7 @@ class Tag():
                 ))
             art_tag.save()
             print 'Wrote embedded MP3 art.'
-        if file_extension(self.path) is 'FLAC':
-            art_tag = FLAC(self.path)
+        if type(art_tag) is mutagen.flac.FLAC:
             image = Picture()
             image.type = 3
             image.mime = 'image/jpg'
@@ -185,7 +182,7 @@ def list_info(tag, folder):
 
 
 def add_folder_art(path):
-    # need to check for valid art here (while looop?)
+    # need to check for valid art here (while loop?)
     # add command for global do not overwrite
     # check for JPGs
     art_file = os.path.join(path, 'folder.jpg')
@@ -239,21 +236,11 @@ def normalize(tag, year, genre, mass_genre=None):
     print 'Wrote metadata for ' + tag.file_name
 
 
-def file_extension(file_name, audio_check=False):
-    name, extension = os.path.splitext(file_name)
-    ext = extension.lower()
-    audio = False
-    audio_type = None
-    if ext.endswith(".mp3"):
-        audio_type = 'MP3'
-        audio = True
-    if ext.endswith(".flac"):
-        audio_type = 'FLAC'
-        audio = True
-    if audio_check is True:
-        return audio
-    else:
-        return audio_type
+def is_audio(file_name):
+    mp3 = re.compile(fnmatch.translate('*.mp3'), re.IGNORECASE)
+    flac = re.compile(fnmatch.translate('*.flac'), re.IGNORECASE)
+    if mp3.match(file_name) or flac.match(file_name):
+        return True
 
 
 def parse_paths(paths):
@@ -262,11 +249,11 @@ def parse_paths(paths):
         file_list = list()
         if os.path.isdir(path):
             for file_name in os.listdir(path):
-                if file_extension(file_name, audio_check=True):
+                if is_audio(file_name):
                     file_list.append(os.path.join(path, file_name))
                     files[path] = file_list
         if os.path.isfile(path):
-            if file_extension(path, audio_check=True):
+            if is_audio(path):
                 file_list.append(path)
                 files[path] = file_list
     return files
@@ -293,9 +280,7 @@ def normalize_input(tag, folder=None, mass_genre=None):
 
 
 def rename_album_prompt(first_tag, key):
-    # would be great to ascii-fy this
     album = first_tag.album
-    # print album
     year = first_tag.year
     # need to not zap the year if it should be in the prefill
     with_year = prefill_input('Album name: ', year + ' - ' + album)
@@ -340,7 +325,6 @@ def live_tracks(tag, key):
 def _main():
     # rename album should rename only, nothing else
     # add check for album art only, nothing else
-    # add genre to autofill
     cmdline = CommandLine()
     cmdline.cmdline()
     if cmdline.mass_genre:
