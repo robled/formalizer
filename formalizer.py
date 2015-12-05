@@ -52,50 +52,49 @@ class CommandLine:
         self.file_dir = args.file_dir
 
 
-class Tag():
+class Track():
     def __init__(self, path):
         self.path = path
+        self.tag = dict()
+        mp3_map = {'album_artist': 'performer',
+                   'track_number': 'tracknumber'}
+        flac_map = {'album_artist': 'albumartist',
+                    'track_number': 'track'}
+        common_map = {'artist': 'artist',
+                      'title': 'title',
+                      'album': 'album',
+                      'year': 'date',
+                      'genre': 'genre',
+                      'disc_number': 'discnumber'}
         tag = mutagen.File(self.path, None, True)
         if type(tag) is mutagen.mp3.EasyMP3:
-            self.album_artist = tag['performer'][0]
-            self.track_number = tag['tracknumber'][0]
-            self.year = tag['date'][0]
+            self.try_attrs(mp3_map, tag)
         if type(tag) is mutagen.flac.FLAC:
-            self.album_artist = tag['albumartist'][0]
-            try:
-                self.track_number = tag['track'][0]
-            except KeyError:
-                self.track_number = tag['tracknumber'][0]
-            self.year = tag['year'][0]
+            self.try_attrs(flac_map, tag)
+        self.try_attrs(common_map, tag)
         self.pprint = tag.pprint().split('\n')[0]
-        self.artist = tag['artist'][0]
-        self.title = tag['title'][0]
-        self.album = tag['album'][0]
-        self.genre = tag['genre'][0]
-        if 'discnumber' in tag:
-            self.disc_number = tag['discnumber']
         self.file_name = tag.filename
+
+    def try_attrs(self, attr_map, tag):
+        for key, value in attr_map.iteritems():
+            try:
+                self.tag[key] = tag[value][0]
+            except KeyError:
+                self.tag[key] = ''
 
     def save(self):
         tag = mutagen.File(self.path, None, True)
         if type(tag) is mutagen.mp3.EasyMP3:
-            tag['performer'] = self.album_artist
-            tag['tracknumber'] = self.track_number
-            tag['date'] = self.year
+            tag['performer'] = self.tag['album_artist']
+            tag['tracknumber'] = self.tag['track_number']
         if type(tag) is mutagen.flac.FLAC:
-            tag['albumartist'] = self.album_artist
-            try:
-                tag['track'] = self.track_number
-            except KeyError:
-                tag['tracknumber'] = self.track_number
-            tag['year'] = self.year
-        tag['artist'] = self.artist
-        tag['title'] = self.title
-        tag['album'] = self.album
-        tag['genre'] = self.genre
-        # does this work?
-        # if 'discnumber' in tag:
-        #     del tag['discnumber']
+            tag['albumartist'] = self.tag['album_artist']
+            tag['tracknumber'] = self.tag['track_number']
+        tag['artist'] = self.tag['artist']
+        tag['title'] = self.tag['title']
+        tag['album'] = self.tag['album']
+        tag['date'] = self.tag['year']
+        tag['genre'] = self.tag['genre']
         tag.save()
 
     def set_art(self, art_file):
@@ -142,19 +141,19 @@ def prefill_input(prompt, prefill=''):
         readline.set_startup_hook()
 
 
-def list_info(tag, folder):
+def list_info(track, folder):
     # if data is missing we crash here
     # for FLACs we don't print the zero padding that is actually in the track
     # number
-    print tag.file_name
-    print tag.pprint
-    print 'Artist: ' + tag.artist
-    print 'Album Artist: ' + tag.album_artist
-    print 'Track#: ' + tag.track_number
-    print 'Title: ' + tag.title
-    print 'Album: ' + tag.album
-    print 'Year: ' + tag.year
-    print 'Genre: ' + tag.genre
+    print track.file_name
+    print track.pprint
+    print 'Artist: ' + track.tag['artist']
+    print 'Album Artist: ' + track.tag['album_artist']
+    print 'Track#: ' + track.tag['track_number']
+    print 'Title: ' + track.tag['title']
+    print 'Album: ' + track.tag['album']
+    print 'Year: ' + track.tag['year']
+    print 'Genre: ' + track.tag['genre']
     art_file = os.path.join(folder, 'folder.jpg')
     if os.path.isfile(art_file):
         try:
@@ -207,33 +206,30 @@ def add_folder_art(path):
         wget.download(url, out=art_file, bar=None)
 
 
-def add_file_art(tag, key):
+def add_file_art(track, key):
     # check for JPGs
     art_file = os.path.join(key, 'folder.jpg')
     if os.path.isdir(key):
-        tag.set_art(art_file)
+        track.set_art(art_file)
     else:
         tf = tempfile.NamedTemporaryFile()
         temp_file = tf.name + '.jpg'
-        url = raw_input('Art url for ' + tag.file_name.rstrip('/') + ': ')
+        url = raw_input('Art url for ' + track.file_name.rstrip('/') + ': ')
         wget.download(url, out=temp_file, bar=None)
-        tag.set_art(temp_file)
+        track.set_art(temp_file)
         tf.close()
 
 
-def normalize(tag, year, genre, mass_genre=None):
-    tag.genre = genre
-    # does this work?
-    if hasattr(tag, 'disc_number'):
-        del tag.disc_number
-    tag.track_number = tag.track_number.split('/')[0]
-    if len(tag.track_number) is 1:
-        tag.track_number = '0' + tag.track_number
-    if tag.artist != 'Various Artists':
-        tag.album_artist = tag.artist
-    tag.year = year
-    tag.save()
-    print 'Wrote metadata for ' + tag.file_name
+def normalize(track, year, genre, mass_genre=None):
+    track.tag['genre'] = genre
+    track.tag['track_number'] = track.tag['track_number'].split('/')[0]
+    if len(track.tag['track_number']) is 1:
+        track.tag['track_number'] = '0' + track.tag['track_number']
+    if track.tag['artist'] != 'Various Artists':
+        track.tag['album_artist'] = track.tag['artist']
+    track.tag['year'] = year
+    track.save()
+    print 'Wrote metadata for ' + track.file_name
 
 
 def is_audio(file_name):
@@ -259,11 +255,11 @@ def parse_paths(paths):
     return files
 
 
-def normalize_input(tag, folder=None, mass_genre=None):
+def normalize_input(track, folder=None, mass_genre=None):
     # check for track numbers, could be missing
     if mass_genre is None:
         try:
-            existing_genre = tag.genre
+            existing_genre = track.tag['genre']
             genre = prefill_input('Genre for ' + folder.rstrip('/') + ': ',
                                   existing_genre)
         except:
@@ -271,17 +267,17 @@ def normalize_input(tag, folder=None, mass_genre=None):
     else:
         genre = mass_genre
     try:
-        year = tag.year
+        year = track.tag['year']
         year = prefill_input('Year for ' + folder.rstrip('/') + ': ',
-                             tag.year[:4])
+                             track.tag['year'][:4])
     except KeyError:
         year = raw_input('Year for ' + folder.rstrip('/') + ': ')
     return genre, year
 
 
-def rename_album_prompt(first_tag, key):
-    album = first_tag.album
-    year = first_tag.year
+def rename_album_prompt(first_track, key):
+    album = first_track.tag['album']
+    year = first_track.tag['year']
     # need to not zap the year if it should be in the prefill
     with_year = prefill_input('Album name: ', year + ' - ' + album)
     year_regex = re.compile('\d\d\d\d\s-\s')
@@ -299,27 +295,27 @@ def rename_album_dir(with_year, key):
     os.rename(key, dir_name)
 
 
-def rename_album_tags(tag, new_name):
-    tag.album = new_name
+def rename_album_tags(track, new_name):
+    track.tag['album'] = new_name
     print 'Renaming album tags to ' + new_name
-    tag.save()
+    track.save()
 
 
-def rename_tracks(tag, key):
-    name, extension = os.path.splitext(tag.file_name)
-    safety = tag.title.replace('/', '-')
-    final_name = tag.track_number + ' - ' + safety + extension
+def rename_tracks(track, key):
+    name, extension = os.path.splitext(track.file_name)
+    safety = track.tag['title'].replace('/', '-')
+    final_name = track.tag['track_number'] + ' - ' + safety + extension
     dest = os.path.join(os.path.dirname(key), final_name)
-    os.rename(tag.file_name, dest)
+    os.rename(track.file_name, dest)
 
 
-def live_tracks(tag, key):
-    if '(live)' in tag.title:
-        print tag.file_name + ' is already tagged (live)'
+def live_tracks(track, key):
+    if '(live)' in track.tag['title']:
+        print track.file_name + ' is already tagged (live)'
     else:
-        tag.title = tag.title + ' (live)'
-        tag.save()
-        rename_tracks(tag, key)
+        track.tag['title'] = track.tag['title'] + ' (live)'
+        track.save()
+        rename_tracks(track, key)
 
 
 def _main():
@@ -330,31 +326,31 @@ def _main():
     if cmdline.mass_genre:
         genre = raw_input('Genre for all folders: ')
     for key, value in parse_paths(cmdline.file_dir).iteritems():
-        first_tag = Tag(value[0])
+        first_track = Track(value[0])
         if cmdline.mass_genre:
-            year = normalize_input(first_tag)
+            year = normalize_input(first_track)
         elif cmdline.list_info:
             pass
         else:
-            genre, year = normalize_input(first_tag, key)
+            genre, year = normalize_input(first_track, key)
             add_folder_art(key)
         if cmdline.rename_album:
-            new_name, with_year = rename_album_prompt(first_tag, key)
+            new_name, with_year = rename_album_prompt(first_track, key)
         for music in value:
-            tag = Tag(music)
+            track = Track(music)
             if cmdline.list_info:
-                list_info(tag, key)
+                list_info(track, key)
             else:
-                normalize(tag, year, genre)
-                add_file_art(tag, key)
+                normalize(track, year, genre)
+                add_file_art(track, key)
             if cmdline.live_tracks:
-                live_tracks(tag, key)
-                list_info(tag, key)
+                live_tracks(track, key)
+                list_info(track, key)
             if cmdline.normalize_filenames:
-                rename_tracks(tag, key)
+                rename_tracks(track, key)
             if cmdline.rename_album:
-                rename_album_tags(tag, new_name)
-                list_info(tag, key)
+                rename_album_tags(track, new_name)
+                list_info(track, key)
         if cmdline.rename_album:
             rename_album_dir(with_year, key)
 
