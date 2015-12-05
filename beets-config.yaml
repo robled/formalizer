@@ -1,0 +1,58 @@
+# save this file to ~/.config/beets/config.yaml
+
+directory: ~/tmp/music/Staging
+library: ~/.config/beets/library.db
+art_filename: folder
+original_date: yes
+per_disc_numbering: no
+clutter: ['*.cue', '*.bmp', '*.m3u', '*.log', '*.txt', '*.jpg', '*.png']
+ui:
+    color: yes
+import:
+    write: yes
+    move: no
+    copy: yes
+    resume: ask
+    link: no
+    none_rec_action: ask
+    timid: yes
+    log: ~/.config/beets/tag.log
+    default_action: apply
+    languages: en
+    detail: yes
+    group_albums: no
+    autotag: yes
+match:
+    preferred:
+        countries: ['US']
+        media: ['CD', 'Digital Media|File']
+        original_year: yes
+    required: artist album year
+paths:
+    default: Albums/%asciify{$albumartist}/$year - %asciify{$album}/$track - %asciify{$title}
+    singleton: Singles/%asciify{$artist} - %asciify{$title}
+    comp: Compilations/%asciify{$album%aunique{}}/$track - %asciify{$title}
+    albumtype:soundtrack: Compilations/$album/$track - $title
+plugins: embedart fetchart ftintitle scrub info zero rewrite web
+embedart:
+    auto: yes
+fetchart:
+    auto: yes
+    remote_priority: yes
+    minwidth: 500
+    maxwidth: 1100
+    enforce_ratio: yes
+zero:
+    fields: disctotal comments disc tracktotal
+rewrite:
+    artist Edge Of Sanity: Edge of Sanity
+    artist Vision Of Disorder: Vision of Disorder
+    artist Alice In Chains: Alice in Chains
+    artist earthtone9: Earthtone9
+    artist dredg: Dredg
+    artist Poison The Well: Poison the Well
+    artist the promise ring: The Promise Ring
+    artist Animals As Leaders: Animals as Leaders
+web:
+    host: 0.0.0.0
+    port: 8337
