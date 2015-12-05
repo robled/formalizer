@@ -6,7 +6,7 @@ What?
 -------
 This is a tool intended to add consistency to your FLAC and MP3 metadata tags as well as the directories and filenames in which they live.  Many folks obsess over audio ripping and compression techniques, but good, consistent tags are hard to find.  
 
-Many digital audio organization software work differently with regards to tags, so a standard that works well with different software is preferred.  Compromises will be made.  Sorting is also important, especially via a file browser or command shell.
+Available digital audio organization software works differently with regards to tags, so a standard that works well with disparate software is preferred.  Compromises will be made.  Sorting is also important, especially via a file browser or command shell.
 
 Tag Specs
 ---------
@@ -23,7 +23,7 @@ Cover Art Specs
 ---------------
 All tags should contain a single front cover image.  All album directories should contain the same image stored as *folder.jpg* for application compatibility.
 
-File Name and Directory specs
+File Name and Directory Specs
 -----------------------------
 The directory structure should allow for chronological sorting by original album release date.  The file name should be sortable by track order and contain any additional info such as *(live)* or *(remix)*.
 
