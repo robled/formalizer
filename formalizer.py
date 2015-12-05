@@ -290,6 +290,8 @@ def rename_album_prompt(first_track, key):
 
 
 def rename_album_dir(with_year, key):
+    # this is actually pretty legit:  
+    # http://stackoverflow.com/a/295298
     dir_name = with_year.replace('/', '-')
     print 'Renaming album directory to ' + dir_name
     os.rename(key, dir_name)
