@@ -66,43 +66,38 @@ class Track():
                       'year': 'date',
                       'genre': 'genre',
                       'disc_number': 'discnumber'}
-        tag = mutagen.File(self.path, None, True)
-        if type(tag) is mutagen.mp3.EasyMP3:
-            self.try_attrs(self.mp3_map, tag)
-        if type(tag) is mutagen.flac.FLAC:
-            self.try_attrs(flac_map, tag)
-        self.try_attrs(common_map, tag)
-        self.pprint = tag.pprint().split('\n')[0]
-        self.file_name = tag.filename
+        self.data = mutagen.File(self.path, None, True)
+        if type(self.data) is mutagen.mp3.EasyMP3:
+            self.try_attrs(self.mp3_map, self.data)
+        if type(self.data) is mutagen.flac.FLAC:
+            self.try_attrs(flac_map, self.data)
+        self.try_attrs(common_map, self.data)
+        self.pprint = self.data.pprint().split('\n')[0]
+        self.file_name = self.data.filename
 
-    def try_attrs(self, attr_map, tag):
+    def try_attrs(self, attr_map):
         for key, value in attr_map.iteritems():
             try:
-                self.tag[key] = tag[value][0]
+                self.tag[key] = self.data[value][0]
             except KeyError:
                 # print warning here if empty but not discnumber?
                 self.tag[key] = ''
 
     def save(self):
-        # is this bit redundant? use self.tag?
-        tag = mutagen.File(self.path, None, True)
-        if type(tag) is mutagen.mp3.EasyMP3:
-            # tag['performer'] = self.tag['album_artist']
-            tag[self.mp3_map['album_artist']] = self.tag['album_artist']
-            tag['tracknumber'] = self.tag['track_number']
-        if type(tag) is mutagen.flac.FLAC:
-            tag['albumartist'] = self.tag['album_artist']
-            tag['tracknumber'] = self.tag['track_number']
-        tag['artist'] = self.tag['artist']
-        tag['title'] = self.tag['title']
-        tag['album'] = self.tag['album']
-        tag['date'] = self.tag['year']
-        tag['genre'] = self.tag['genre']
-        tag.save()
+        if type(self.data) is mutagen.mp3.EasyMP3:
+            self.data[self.mp3_map['album_artist']] = self.tag['album_artist']
+            self.data[self.mp3_map['track_number']] = self.tag['track_number']
+        if type(self.data) is mutagen.flac.FLAC:
+            self.data[self.flac_map['album_artist']] = self.tag['album_artist']
+            self.data[self.flac_map['track_number']] = self.tag['track_number']
+        self.data['artist'] = self.tag['artist']
+        self.data['title'] = self.tag['title']
+        self.data['album'] = self.tag['album']
+        self.data['date'] = self.tag['year']
+        self.data['genre'] = self.tag['genre']
+        self.data.save()
 
     def set_art(self, art_file):
-        # is this bit redundant? use self.tag?
-        # what of the extra args??
         art_tag = mutagen.File(self.path, None, False)
         if type(art_tag) is mutagen.mp3.MP3:
             with open(art_file, 'rb') as f:
