@@ -56,8 +56,8 @@ class Track():
     def __init__(self, path):
         self.path = path
         self.tag = dict()
-        mp3_map = {'album_artist': 'performer',
-                   'track_number': 'tracknumber'}
+        self.mp3_map = {'album_artist': 'performer',
+                        'track_number': 'tracknumber'}
         flac_map = {'album_artist': 'albumartist',
                     'track_number': 'track'}
         common_map = {'artist': 'artist',
@@ -68,7 +68,7 @@ class Track():
                       'disc_number': 'discnumber'}
         tag = mutagen.File(self.path, None, True)
         if type(tag) is mutagen.mp3.EasyMP3:
-            self.try_attrs(mp3_map, tag)
+            self.try_attrs(self.mp3_map, tag)
         if type(tag) is mutagen.flac.FLAC:
             self.try_attrs(flac_map, tag)
         self.try_attrs(common_map, tag)
@@ -80,12 +80,15 @@ class Track():
             try:
                 self.tag[key] = tag[value][0]
             except KeyError:
+                # print warning here if empty but not discnumber?
                 self.tag[key] = ''
 
     def save(self):
+        # is this bit redundant? use self.tag?
         tag = mutagen.File(self.path, None, True)
         if type(tag) is mutagen.mp3.EasyMP3:
-            tag['performer'] = self.tag['album_artist']
+            # tag['performer'] = self.tag['album_artist']
+            tag[self.mp3_map['album_artist']] = self.tag['album_artist']
             tag['tracknumber'] = self.tag['track_number']
         if type(tag) is mutagen.flac.FLAC:
             tag['albumartist'] = self.tag['album_artist']
@@ -98,6 +101,8 @@ class Track():
         tag.save()
 
     def set_art(self, art_file):
+        # is this bit redundant? use self.tag?
+        # what of the extra args??
         art_tag = mutagen.File(self.path, None, False)
         if type(art_tag) is mutagen.mp3.MP3:
             with open(art_file, 'rb') as f:
@@ -142,7 +147,6 @@ def prefill_input(prompt, prefill=''):
 
 
 def list_info(track, folder):
-    # if data is missing we crash here
     # for FLACs we don't print the zero padding that is actually in the track
     # number
     print track.file_name
@@ -255,24 +259,25 @@ def parse_paths(paths):
     return files
 
 
-def normalize_input(track, folder=None, mass_genre=None):
+def genre_input(track, folder):
     # check for track numbers, could be missing
-    if mass_genre is None:
-        try:
-            existing_genre = track.tag['genre']
-            genre = prefill_input('Genre for ' + folder.rstrip('/') + ': ',
-                                  existing_genre)
-        except:
-            genre = raw_input('Genre for ' + folder.rstrip('/') + ': ')
-    else:
-        genre = mass_genre
+    try:
+        existing_genre = track.tag['genre']
+        genre = prefill_input('Genre for ' + folder.rstrip('/') + ': ',
+                              existing_genre)
+    except KeyError:
+        genre = raw_input('Genre for ' + folder.rstrip('/') + ': ')
+    return genre
+
+
+def year_input(track, folder):
     try:
         year = track.tag['year']
         year = prefill_input('Year for ' + folder.rstrip('/') + ': ',
                              track.tag['year'][:4])
     except KeyError:
         year = raw_input('Year for ' + folder.rstrip('/') + ': ')
-    return genre, year
+    return year
 
 
 def rename_album_prompt(first_track, key):
@@ -290,7 +295,7 @@ def rename_album_prompt(first_track, key):
 
 
 def rename_album_dir(with_year, key):
-    # this is actually pretty legit:  
+    # this is actually pretty legit:
     # http://stackoverflow.com/a/295298
     dir_name = with_year.replace('/', '-')
     print 'Renaming album directory to ' + dir_name
@@ -330,11 +335,13 @@ def _main():
     for key, value in parse_paths(cmdline.file_dir).iteritems():
         first_track = Track(value[0])
         if cmdline.mass_genre:
-            year = normalize_input(first_track)
+            year = year_input(first_track, key)
+            add_folder_art(key)
         elif cmdline.list_info:
             pass
         else:
-            genre, year = normalize_input(first_track, key)
+            genre = genre_input(first_track, key)
+            year = year_input(first_track, key)
             add_folder_art(key)
         if cmdline.rename_album:
             new_name, with_year = rename_album_prompt(first_track, key)
@@ -355,6 +362,7 @@ def _main():
                 list_info(track, key)
         if cmdline.rename_album:
             rename_album_dir(with_year, key)
+            # would be cool to list just one file as a summary
 
 if __name__ == '__main__':
     _main()
