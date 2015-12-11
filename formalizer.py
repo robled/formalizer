@@ -25,7 +25,7 @@ class CommandLine:
         self.normalize_filenames = False
         self.list_info = False
 
-    def cmdline(self):
+    def cmd_line(self):
         parser = argparse.ArgumentParser(description='TAGS.')
         parser.add_argument('-l', help='live tracks',
                             action="store_true")
@@ -58,8 +58,8 @@ class Track():
         self.tag = dict()
         self.mp3_map = {'album_artist': 'performer',
                         'track_number': 'tracknumber'}
-        flac_map = {'album_artist': 'albumartist',
-                    'track_number': 'track'}
+        self.flac_map = {'album_artist': 'albumartist',
+                         'track_number': 'track'}
         common_map = {'artist': 'artist',
                       'title': 'title',
                       'album': 'album',
@@ -68,10 +68,10 @@ class Track():
                       'disc_number': 'discnumber'}
         self.data = mutagen.File(self.path, None, True)
         if type(self.data) is mutagen.mp3.EasyMP3:
-            self.try_attrs(self.mp3_map, self.data)
+            self.try_attrs(self.mp3_map)
         if type(self.data) is mutagen.flac.FLAC:
-            self.try_attrs(flac_map, self.data)
-        self.try_attrs(common_map, self.data)
+            self.try_attrs(self.flac_map)
+        self.try_attrs(common_map)
         self.pprint = self.data.pprint().split('\n')[0]
         self.file_name = self.data.filename
 
@@ -179,6 +179,14 @@ def list_info(track, folder):
             os.chdir(pwd)
 
 
+def download_art(path, art_file):
+    url = raw_input('Art url for ' + path.rstrip('/') + ': ')
+    if url != '':
+        wget.download(url, out=art_file, bar=None)
+    else:
+        print 'No art URL provided, not adding cover art.'
+
+
 def add_folder_art(path):
     # need to check for valid art here (while loop?)
     # add command for global do not overwrite
@@ -198,24 +206,21 @@ def add_folder_art(path):
             print 'using existing art'
         else:
             os.remove(art_file)
-            url = raw_input('Art url for ' + path.rstrip('/') + ': ')
-            wget.download(url, out=art_file, bar=None)
+            download_art(path, art_file)
     elif os.path.isdir(path):
-        url = raw_input('Art url for ' + path.rstrip('/') + ': ')
-        wget.download(url, out=art_file, bar=None)
+        download_art(path, art_file)
 
 
 def add_file_art(track, key):
     # check for JPGs
     art_file = os.path.join(key, 'folder.jpg')
-    if os.path.isdir(key):
+    if os.path.isfile(art_file):
         track.set_art(art_file)
     else:
         tf = tempfile.NamedTemporaryFile()
         temp_file = tf.name + '.jpg'
-        url = raw_input('Art url for ' + track.file_name.rstrip('/') + ': ')
-        wget.download(url, out=temp_file, bar=None)
-        track.set_art(temp_file)
+        if download_art(track.file_name, temp_file):
+            track.set_art(temp_file)
         tf.close()
 
 
@@ -275,9 +280,9 @@ def year_input(track, folder):
     return year
 
 
-def rename_album_prompt(first_track, key):
-    album = first_track.tag['album']
-    year = first_track.tag['year']
+def rename_album_prompt(one_track, key):
+    album = one_track.tag['album']
+    year = one_track.tag['year']
     # need to not zap the year if it should be in the prefill
     with_year = prefill_input('Album name: ', year + ' - ' + album)
     year_regex = re.compile('\d\d\d\d\s-\s')
@@ -323,41 +328,44 @@ def live_tracks(track, key):
 def _main():
     # rename album should rename only, nothing else
     # add check for album art only, nothing else
-    cmdline = CommandLine()
-    cmdline.cmdline()
-    if cmdline.mass_genre:
+    cmd_line = CommandLine()
+    cmd_line.cmd_line()
+    if cmd_line.mass_genre:
         genre = raw_input('Genre for all folders: ')
-    for key, value in parse_paths(cmdline.file_dir).iteritems():
-        first_track = Track(value[0])
-        if cmdline.mass_genre:
-            year = year_input(first_track, key)
+    for key, value in parse_paths(cmd_line.file_dir).iteritems():
+        one_track = Track(value[0])
+        if cmd_line.mass_genre:
+            year = year_input(one_track, key)
             add_folder_art(key)
-        elif cmdline.list_info:
+        elif cmd_line.list_info:
             pass
         else:
-            genre = genre_input(first_track, key)
-            year = year_input(first_track, key)
+            genre = genre_input(one_track, key)
+            year = year_input(one_track, key)
             add_folder_art(key)
-        if cmdline.rename_album:
-            new_name, with_year = rename_album_prompt(first_track, key)
+        if cmd_line.rename_album:
+            new_name, with_year = rename_album_prompt(one_track, key)
         for music in value:
             track = Track(music)
-            if cmdline.list_info:
+            if cmd_line.list_info:
                 list_info(track, key)
             else:
                 normalize(track, year, genre)
                 add_file_art(track, key)
-            if cmdline.live_tracks:
+            if cmd_line.live_tracks:
                 live_tracks(track, key)
                 list_info(track, key)
-            if cmdline.normalize_filenames:
+            if cmd_line.normalize_filenames:
                 rename_tracks(track, key)
-            if cmdline.rename_album:
+            if cmd_line.rename_album:
                 rename_album_tags(track, new_name)
                 list_info(track, key)
-        if cmdline.rename_album:
+        if cmd_line.rename_album:
             rename_album_dir(with_year, key)
             # would be cool to list just one file as a summary
+        if not cmd_line.list_info:
+            print 'Summary example track for ' + key + ':'
+            list_info(one_track, key)
 
 if __name__ == '__main__':
     _main()
