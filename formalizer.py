@@ -17,12 +17,10 @@ from PilLite import Image
 
 class CommandLine:
     def __init__(self):
-        self.add_art = False
         self.live_tracks = False
         self.file_dir = None
         self.rename_album = None
         self.mass_genre = False
-        self.normalize_filenames = False
         self.list_info = False
 
     def cmd_line(self):
@@ -32,8 +30,6 @@ class CommandLine:
         parser.add_argument('-r', help='rename album',
                             action="store_true")
         parser.add_argument('-g', help='mass genre',
-                            action="store_true")
-        parser.add_argument('-n', help='normalize filenames',
                             action="store_true")
         parser.add_argument('-i', help='list info',
                             action="store_true")
@@ -45,8 +41,6 @@ class CommandLine:
             self.rename_album = True
         if args.g:
             self.mass_genre = True
-        if args.n:
-            self.normalize_filenames = True
         if args.i:
             self.list_info = True
         self.file_dir = args.file_dir
@@ -352,11 +346,10 @@ def _main():
             else:
                 normalize(track, year, genre)
                 add_file_art(track, key)
+                rename_tracks(track, key)
             if cmd_line.live_tracks:
                 live_tracks(track, key)
                 list_info(track, key)
-            if cmd_line.normalize_filenames:
-                rename_tracks(track, key)
             if cmd_line.rename_album:
                 rename_album_tags(track, new_name)
                 list_info(track, key)
@@ -364,6 +357,7 @@ def _main():
             rename_album_dir(with_year, key)
             # would be cool to list just one file as a summary
         if not cmd_line.list_info:
+            # this has some stale data in it
             print 'Summary example track for ' + key + ':'
             list_info(one_track, key)
 
