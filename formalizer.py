@@ -227,7 +227,7 @@ def add_file_art(track, key):
 def normalize(track, year, genre, mass_genre=None):
     track.tag['genre'] = genre
     track.tag['track_number'] = track.tag['track_number'].split('/')[0]
-    if len(track.tag['track_number']) is 1:
+    if len(track.tag['track_number']) == 1:
         track.tag['track_number'] = '0' + track.tag['track_number']
     if track.tag['artist'] != 'Various Artists':
         track.tag['album_artist'] = track.tag['artist']
