@@ -97,7 +97,6 @@ __
       -l          live tracks
       -r          rename album
       -g          mass genre
-      -n          normalize filenames
       -i          list info
 
 
