@@ -306,7 +306,13 @@ def rename_tracks(track, key):
     name, extension = os.path.splitext(track.file_name)
     safety = track.tag['title'].replace('/', '-')
     final_name = track.tag['track_number'] + ' - ' + safety + extension
-    dest = os.path.join(os.path.dirname(key), final_name)
+    # shell globbing doesn't put a slash in the path, so we check for that
+    if '/' in key:
+        dest = os.path.join(os.path.dirname(key), final_name)
+    elif os.path.isfile(key):
+        dest = final_name
+    else:
+        dest = os.path.join(key, final_name)
     os.rename(track.file_name, dest)
 
 
@@ -346,13 +352,14 @@ def _main():
             else:
                 normalize(track, year, genre)
                 add_file_art(track, key)
-                rename_tracks(track, key)
             if cmd_line.live_tracks:
                 live_tracks(track, key)
                 list_info(track, key)
             if cmd_line.rename_album:
                 rename_album_tags(track, new_name)
                 list_info(track, key)
+            if not cmd_line.live_tracks and not cmd_line.rename_album:
+                rename_tracks(track, key)
         if cmd_line.rename_album:
             rename_album_dir(with_year, key)
             # would be cool to list just one file as a summary
