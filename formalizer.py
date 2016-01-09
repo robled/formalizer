@@ -308,7 +308,7 @@ def rename_tracks(track, key):
     final_name = track.tag['track_number'] + ' - ' + safety + extension
     # shell globbing doesn't put a slash in the path, so we check for that
     if '/' in key:
-        dest = os.path.join(os.path.dirname(key), final_name)
+        dest = os.path.join(key, final_name)
     elif os.path.isfile(key):
         dest = final_name
     else:

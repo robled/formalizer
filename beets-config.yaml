@@ -1,5 +1,3 @@
-# save this file to ~/.config/beets/config.yaml
-
 directory: ~/tmp/music/Staging
 library: ~/.config/beets/library.db
 art_filename: folder
@@ -53,6 +51,7 @@ rewrite:
     artist Poison The Well: Poison the Well
     artist the promise ring: The Promise Ring
     artist Animals As Leaders: Animals as Leaders
+    artist Cult Of Luna: Cult of Luna
 web:
     host: 0.0.0.0
     port: 8337
