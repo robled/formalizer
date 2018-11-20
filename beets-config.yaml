@@ -1,4 +1,4 @@
-directory: ~/tmp/music/Staging
+directory: ~/tmp/music-stage
 library: ~/.config/beets/library.db
 art_filename: folder
 original_date: yes
@@ -36,7 +36,7 @@ embedart:
     auto: yes
 fetchart:
     auto: yes
-    remote_priority: yes
+    #remote_priority: yes
     minwidth: 500
     maxwidth: 1100
     enforce_ratio: yes
