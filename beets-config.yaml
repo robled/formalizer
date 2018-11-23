@@ -36,10 +36,10 @@ embedart:
     auto: yes
 fetchart:
     auto: yes
-    #remote_priority: yes
     minwidth: 500
     maxwidth: 1100
     enforce_ratio: yes
+    sources: filesystem coverart amazon albumart google
 zero:
     fields: disctotal comments disc tracktotal
 rewrite:
